@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rack Monitor Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase App (the core Firebase SDK) is always required and must be listed first -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <!-- Add Firebase products that you want to use -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#0f172a',
+                        cardbg: '#1e293b',
+                        accent: '#38bdf8',
+                        danger: '#ef4444',
+                        success: '#10b981'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        /* Custom scrollbar for better look in dark mode */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-darkbg text-slate-300 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8 pb-4 border-b border-slate-700">
+            <div>
+                <h1 class="text-3xl font-bold text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                    </svg>
+                    Infrastructure Monitor
+                </h1>
+                <p class="text-sm text-slate-400 mt-1">Live Environment Tracking for Rack Cabinets</p>
+            </div>
+            <div class="text-right">
+                <div class="inline-flex items-center gap-2 bg-cardbg px-3 py-1 rounded-full border border-slate-700">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-success"></span>
+                    </span>
+                    <span id="connection-status" class="text-sm text-slate-300">Connecting...</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">Last Update: <span id="last-update-time">--:--</span></p>
+            </div>
+        </header>
+
+        <!-- Current Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <!-- Temperature Card -->
+            <div class="bg-cardbg rounded-xl p-6 border border-slate-700 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                </div>
+                <h3 class="text-slate-400 font-medium mb-1">Current Temperature</h3>
+                <div class="flex items-baseline gap-2">
+                    <span id="current-temp" class="text-4xl font-bold text-white">--</span>
+                    <span class="text-xl text-slate-500">°C</span>
+                </div>
+                <p id="temp-status" class="text-sm text-slate-400 mt-2">Status: <span class="text-slate-300">Waiting for data</span></p>
+            </div>
+
+            <!-- Humidity Card -->
+            <div class="bg-cardbg rounded-xl p-6 border border-slate-700 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                    </svg>
+                </div>
+                <h3 class="text-slate-400 font-medium mb-1">Current Humidity</h3>
+                <div class="flex items-baseline gap-2">
+                    <span id="current-humid" class="text-4xl font-bold text-white">--</span>
+                    <span class="text-xl text-slate-500">%</span>
+                </div>
+                <p id="humid-status" class="text-sm text-slate-400 mt-2">Status: <span class="text-slate-300">Waiting for data</span></p>
+            </div>
+
+            <!-- Target Rack Name Card -->
+            <div class="bg-cardbg rounded-xl p-6 border border-slate-700 shadow-lg lg:col-span-2 flex flex-col justify-center">
+                 <h3 class="text-slate-400 font-medium mb-1">Monitoring Target</h3>
+                 <div class="flex items-center gap-3">
+                     <span class="bg-indigo-500/20 text-indigo-400 px-3 py-1 rounded text-sm font-semibold border border-indigo-500/30">Active</span>
+                     <span id="target-rack-name" class="text-2xl font-bold text-white tracking-wide">Rack-Core-Switch</span>
+                 </div>
+                 <p class="text-sm text-slate-500 mt-2">Data source: ESP32 Dev Module (Thap Kwang, Saraburi)</p>
+            </div>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="bg-cardbg rounded-xl p-4 md:p-6 border border-slate-700 shadow-lg mb-8">
+            <h2 class="text-xl font-bold text-white mb-4">Environment Trend (Last 50 Records)</h2>
+            <div class="relative h-72 md:h-96 w-full">
+                <canvas id="envChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. Firebase Configuration ---
+        // เราใช้ Realtime Database URL ของคุณโดยตรง และไม่จำเป็นต้องใช้ API Key สำหรับการ "อ่าน" 
+        // หาก Database ของคุณเปิด Rules .read เป็น true ไว้
+        const firebaseConfig = {
+            databaseURL: "https://rackmetrics-default-rtdb.asia-southeast1.firebasedatabase.app"
+        };
+        
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // --- 2. Chart.js Initialization ---
+        const ctx = document.getElementById('envChart').getContext('2d');
+        
+        // ตั้งค่า Default Font สีให้เข้ากับ Dark Theme
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+
+        const envChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // เก็บเวลา (Timestamp)
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        data: [],
+                        borderColor: '#ef4444', // Red
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#ef4444',
+                        tension: 0.4, // ทำให้เส้นโค้งสมูท
+                        fill: true,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: [],
+                        borderColor: '#38bdf8', // Blue
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#38bdf8',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { usePointStyle: true, boxWidth: 8 }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        titleColor: '#fff',
+                        bodyColor: '#cbd5e1',
+                        borderColor: '#334155',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(51, 65, 85, 0.5)', drawBorder: false },
+                        ticks: { maxRotation: 45, minRotation: 45 }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: { display: true, text: 'Temperature (°C)', color: '#ef4444' },
+                        grid: { color: 'rgba(51, 65, 85, 0.5)' },
+                        suggestedMin: 20,
+                        suggestedMax: 40
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: 'Humidity (%)', color: '#38bdf8' },
+                        grid: { drawOnChartArea: false }, // ซ่อนเส้นกริดของแกนขวา ไม่ให้ทับกัน
+                        suggestedMin: 20,
+                        suggestedMax: 80
+                    }
+                }
+            }
+        });
+
+        // --- 3. Data Fetching & Real-time Updates ---
+        const MAX_DATA_POINTS = 50; // จำนวนจุดที่ต้องการแสดงบนกราฟ (ย้อนหลัง 50 ครั้งล่าสุด)
+        const statusEl = document.getElementById('connection-status');
+        const timeEl = document.getElementById('last-update-time');
+        
+        // อ้างอิงไปยังก้อนข้อมูล (Node) ที่ชื่อ 'rack_metrics'
+        const metricsRef = db.ref('rack_metrics');
+
+        // ฟังก์ชันอัปเดต UI เมื่อมีข้อมูลใหม่
+        function updateDashboard(dataObj) {
+            if (!dataObj) return;
+
+            // แปลง Object ที่ได้จาก Firebase เป็น Array เพื่อให้จัดการง่ายขึ้น
+            // (Firebase มักจะเก็บข้อมูลเป็น Key แบบสุ่มเช่น -O1a2b3c4...: { temp: 28, ... })
+            const dataArray = Object.keys(dataObj).map(key => dataObj[key]);
+            
+            // เรียงลำดับตาม Timestamp (ถ้ามี) หรือเอาแค่ MAX_DATA_POINTS ตัวล่าสุด
+            // เนื่องจากไม่ได้เรียงจากเซิร์ฟเวอร์โดยตรง เราจะดึงมาทั้งหมดและตัดเอาส่วนท้าย
+            const latestData = dataArray.slice(-MAX_DATA_POINTS);
+            
+            if (latestData.length === 0) return;
+
+            // ข้อมูลล่าสุด (ตัวสุดท้ายใน Array) สำหรับแสดงบนการ์ดด้านบน
+            const current = latestData[latestData.length - 1];
+            
+            // 1. อัปเดตตัวเลขในการ์ด (ตรวจสอบว่าตัวเลขถูกส่งมาเป็น String หรือ Number แล้วบังคับให้โชว์ทศนิยม 1 ตำแหน่ง)
+            const tempVal = parseFloat(current.temperature).toFixed(1);
+            const humidVal = parseFloat(current.humidity).toFixed(1);
+            
+            document.getElementById('current-temp').innerText = tempVal;
+            document.getElementById('current-humid').innerText = humidVal;
+            
+            // อัปเดตสถานะอุณหภูมิ (แต่งสีตามความร้อน)
+            const tempStatusEl = document.getElementById('temp-status');
+            if (tempVal > 30) {
+                tempStatusEl.innerHTML = 'Status: <span class="text-danger font-semibold">Warning (High Temp)</span>';
+                document.getElementById('current-temp').classList.replace('text-white', 'text-danger');
+            } else {
+                tempStatusEl.innerHTML = 'Status: <span class="text-success font-semibold">Normal</span>';
+                document.getElementById('current-temp').classList.replace('text-danger', 'text-white');
+            }
+
+            // 2. อัปเดตเวลาอัปเดตล่าสุด
+            // สมมติว่าในฐานข้อมูลส่งมาเป็น "2026-07-25 00:56:11" หรือส่งเวลาจากเบราว์เซอร์
+            const displayTime = current.timestamp ? current.timestamp.split(' ')[1] : new Date().toLocaleTimeString('th-TH');
+            timeEl.innerText = displayTime;
+            
+            if(current.rack_name) {
+                document.getElementById('target-rack-name').innerText = current.rack_name;
+            }
+
+            // 3. อัปเดตกราฟ (เคลียร์ของเก่า แล้วใส่ของใหม่ทั้งหมดที่ดึงมา)
+            envChart.data.labels = [];
+            envChart.data.datasets[0].data = []; // Temp
+            envChart.data.datasets[1].data = []; // Humid
+
+            latestData.forEach(item => {
+                // ทำให้เวลาสั้นลง เช่น จาก "2026-07-25 00:56:11" เหลือ "00:56"
+                let shortTime = item.timestamp;
+                if(shortTime && shortTime.includes(' ')) {
+                     let timePart = shortTime.split(' ')[1]; // เอาส่วนเวลา
+                     shortTime = timePart.substring(0, 5); // เอาแค่ ชม:นาที
+                } else {
+                     shortTime = "--:--";
+                }
+
+                envChart.data.labels.push(shortTime);
+                envChart.data.datasets[0].data.push(item.temperature);
+                envChart.data.datasets[1].data.push(item.humidity);
+            });
+
+            // สั่งให้กราฟวาดตัวเองใหม่
+            envChart.update();
+        }
+
+        // เริ่มต้นการดึงข้อมูลแบบ Real-time (ทำงานทันทีและทำงานทุกครั้งที่มีข้อมูลใหม่เข้า DB)
+        metricsRef.on('value', (snapshot) => {
+            statusEl.innerText = "Connected (Live)";
+            statusEl.classList.replace('text-slate-300', 'text-success');
+            
+            const data = snapshot.val();
+            updateDashboard(data);
+        }, (error) => {
+            console.error("Firebase read failed: " + error.code);
+            statusEl.innerText = "Connection Failed";
+            statusEl.classList.replace('text-slate-300', 'text-danger');
+        });
+
+    </script>
+</body>
+</html>
