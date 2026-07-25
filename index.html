@@ -28,7 +28,6 @@
     </script>
     <style>
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        /* Custom scrollbar for better look in dark mode */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
@@ -106,7 +105,18 @@
 
         <!-- Chart Section -->
         <div class="bg-cardbg rounded-xl p-4 md:p-6 border border-slate-700 shadow-lg mb-8">
-            <h2 class="text-xl font-bold text-white mb-4">Environment Trend (Last 50 Records)</h2>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <h2 id="chart-title" class="text-xl font-bold text-white">Environment Trend (50 Latest Records)</h2>
+                
+                <!-- View Mode Selectors -->
+                <div class="inline-flex rounded-lg p-1 bg-slate-900 border border-slate-700 text-xs font-medium flex-wrap">
+                    <button onclick="changeViewMode('latest')" id="btn-latest" class="px-3 py-1.5 rounded-md bg-accent text-slate-950 font-semibold transition-all">50 ล่าสุด</button>
+                    <button onclick="changeViewMode('today')" id="btn-today" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition-all">เฉพาะวันนี้</button>
+                    <button onclick="changeViewMode('last7days')" id="btn-last7days" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition-all">ย้อนหลัง 7 วัน</button>
+                    <button onclick="changeViewMode('dailyavg')" id="btn-dailyavg" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition-all">ค่าเฉลี่ยรายวัน</button>
+                </div>
+            </div>
+
             <div class="relative h-72 md:h-96 w-full">
                 <canvas id="envChart"></canvas>
             </div>
@@ -116,46 +126,46 @@
 
     <script>
         // --- 1. Firebase Configuration ---
-        // เราใช้ Realtime Database URL ของคุณโดยตรง และไม่จำเป็นต้องใช้ API Key สำหรับการ "อ่าน" 
-        // หาก Database ของคุณเปิด Rules .read เป็น true ไว้
         const firebaseConfig = {
             databaseURL: "https://rackmetrics-default-rtdb.asia-southeast1.firebasedatabase.app"
         };
         
-        // Initialize Firebase
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
         const db = firebase.database();
 
+        // --- Global Variables ---
+        let globalRawData = null;
+        let currentViewMode = 'latest'; // โหมดเริ่มต้น
+
         // --- 2. Chart.js Initialization ---
         const ctx = document.getElementById('envChart').getContext('2d');
         
-        // ตั้งค่า Default Font สีให้เข้ากับ Dark Theme
         Chart.defaults.color = '#94a3b8';
         Chart.defaults.font.family = "'Inter', sans-serif";
 
         const envChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: [], // เก็บเวลา (Timestamp)
+                labels: [],
                 datasets: [
                     {
                         label: 'Temperature (°C)',
                         data: [],
-                        borderColor: '#ef4444', // Red
+                        borderColor: '#ef4444',
                         backgroundColor: 'rgba(239, 68, 68, 0.1)',
                         borderWidth: 2,
                         pointRadius: 3,
                         pointBackgroundColor: '#ef4444',
-                        tension: 0.4, // ทำให้เส้นโค้งสมูท
+                        tension: 0.4,
                         fill: true,
                         yAxisID: 'y'
                     },
                     {
                         label: 'Humidity (%)',
                         data: [],
-                        borderColor: '#38bdf8', // Blue
+                        borderColor: '#38bdf8',
                         backgroundColor: 'rgba(56, 189, 248, 0.1)',
                         borderWidth: 2,
                         pointRadius: 3,
@@ -205,7 +215,7 @@
                         display: true,
                         position: 'right',
                         title: { display: true, text: 'Humidity (%)', color: '#38bdf8' },
-                        grid: { drawOnChartArea: false }, // ซ่อนเส้นกริดของแกนขวา ไม่ให้ทับกัน
+                        grid: { drawOnChartArea: false },
                         suggestedMin: 20,
                         suggestedMax: 80
                     }
@@ -213,39 +223,42 @@
             }
         });
 
-        // --- 3. Data Fetching & Real-time Updates ---
-        const MAX_DATA_POINTS = 50; // จำนวนจุดที่ต้องการแสดงบนกราฟ (ย้อนหลัง 50 ครั้งล่าสุด)
-        const statusEl = document.getElementById('connection-status');
-        const timeEl = document.getElementById('last-update-time');
-        
-        // อ้างอิงไปยังก้อนข้อมูล (Node) ที่ชื่อ 'rack_metrics'
-        const metricsRef = db.ref('rack_metrics');
+        // --- 3. View Mode Switcher ---
+        function changeViewMode(mode) {
+            currentViewMode = mode;
+            
+            // สลับสีปุ่มเมนู Active
+            const modes = ['latest', 'today', 'last7days', 'dailyavg'];
+            modes.forEach(m => {
+                const btn = document.getElementById(`btn-${m}`);
+                if (m === mode) {
+                    btn.className = "px-3 py-1.5 rounded-md bg-accent text-slate-950 font-semibold transition-all";
+                } else {
+                    btn.className = "px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition-all";
+                }
+            });
 
-        // ฟังก์ชันอัปเดต UI เมื่อมีข้อมูลใหม่
-        function updateDashboard(dataObj) {
+            // อัปเดตหัวข้อและเรนเดอร์กราฟใหม่ทันทีหากมีข้อมูลอยู่แล้ว
+            if (globalRawData) {
+                processAndRenderChart(globalRawData);
+            }
+        }
+
+        // --- 4. Data Processing & Rendering Engine ---
+        function processAndRenderChart(dataObj) {
             if (!dataObj) return;
 
-            // แปลง Object ที่ได้จาก Firebase เป็น Array เพื่อให้จัดการง่ายขึ้น
-            // (Firebase มักจะเก็บข้อมูลเป็น Key แบบสุ่มเช่น -O1a2b3c4...: { temp: 28, ... })
             const dataArray = Object.keys(dataObj).map(key => dataObj[key]);
-            
-            // เรียงลำดับตาม Timestamp (ถ้ามี) หรือเอาแค่ MAX_DATA_POINTS ตัวล่าสุด
-            // เนื่องจากไม่ได้เรียงจากเซิร์ฟเวอร์โดยตรง เราจะดึงมาทั้งหมดและตัดเอาส่วนท้าย
-            const latestData = dataArray.slice(-MAX_DATA_POINTS);
-            
-            if (latestData.length === 0) return;
+            if (dataArray.length === 0) return;
 
-            // ข้อมูลล่าสุด (ตัวสุดท้ายใน Array) สำหรับแสดงบนการ์ดด้านบน
-            const current = latestData[latestData.length - 1];
-            
-            // 1. อัปเดตตัวเลขในการ์ด (ตรวจสอบว่าตัวเลขถูกส่งมาเป็น String หรือ Number แล้วบังคับให้โชว์ทศนิยม 1 ตำแหน่ง)
+            // อัปเดตการ์ดสถานะด้านบนด้วยข้อมูลล่าสุดเสมอ
+            const current = dataArray[dataArray.length - 1];
             const tempVal = parseFloat(current.temperature).toFixed(1);
             const humidVal = parseFloat(current.humidity).toFixed(1);
             
             document.getElementById('current-temp').innerText = tempVal;
             document.getElementById('current-humid').innerText = humidVal;
             
-            // อัปเดตสถานะอุณหภูมิ (แต่งสีตามความร้อน)
             const tempStatusEl = document.getElementById('temp-status');
             if (tempVal > 30) {
                 tempStatusEl.innerHTML = 'Status: <span class="text-danger font-semibold">Warning (High Temp)</span>';
@@ -255,46 +268,112 @@
                 document.getElementById('current-temp').classList.replace('text-danger', 'text-white');
             }
 
-            // 2. อัปเดตเวลาอัปเดตล่าสุด
-            // สมมติว่าในฐานข้อมูลส่งมาเป็น "2026-07-25 00:56:11" หรือส่งเวลาจากเบราว์เซอร์
             const displayTime = current.timestamp ? current.timestamp.split(' ')[1] : new Date().toLocaleTimeString('th-TH');
-            timeEl.innerText = displayTime;
+            document.getElementById('last-update-time').innerText = displayTime;
             
             if(current.rack_name) {
                 document.getElementById('target-rack-name').innerText = current.rack_name;
             }
 
-            // 3. อัปเดตกราฟ (เคลียร์ของเก่า แล้วใส่ของใหม่ทั้งหมดที่ดึงมา)
-            envChart.data.labels = [];
-            envChart.data.datasets[0].data = []; // Temp
-            envChart.data.datasets[1].data = []; // Humid
+            // จัดการชุดข้อมูลตามโหมดที่เลือก (View Mode)
+            let chartLabels = [];
+            let chartTemp = [];
+            let chartHumid = [];
+            const titleEl = document.getElementById('chart-title');
 
-            latestData.forEach(item => {
-                // ทำให้เวลาสั้นลง เช่น จาก "2026-07-25 00:56:11" เหลือ "00:56"
-                let shortTime = item.timestamp;
-                if(shortTime && shortTime.includes(' ')) {
-                     let timePart = shortTime.split(' ')[1]; // เอาส่วนเวลา
-                     shortTime = timePart.substring(0, 5); // เอาแค่ ชม:นาที
-                } else {
-                     shortTime = "--:--";
-                }
+            const now = new Date();
+            const todayStr = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
 
-                envChart.data.labels.push(shortTime);
-                envChart.data.datasets[0].data.push(item.temperature);
-                envChart.data.datasets[1].data.push(item.humidity);
-            });
+            if (currentViewMode === 'latest') {
+                titleEl.innerText = "Environment Trend (50 Latest Records)";
+                const latestData = dataArray.slice(-50);
+                latestData.forEach(item => {
+                    let shortTime = item.timestamp ? item.timestamp.split(' ')[1].substring(0, 5) : "--:--";
+                    chartLabels.push(shortTime);
+                    chartTemp.push(item.temperature);
+                    chartHumid.push(item.humidity);
+                });
 
-            // สั่งให้กราฟวาดตัวเองใหม่
+            } else if (currentViewMode === 'today') {
+                titleEl.innerText = `Environment Trend - Today (${todayStr})`;
+                const todayData = dataArray.filter(item => item.timestamp && item.timestamp.startsWith(todayStr));
+                todayData.forEach(item => {
+                    let shortTime = item.timestamp.split(' ')[1].substring(0, 5);
+                    chartLabels.push(shortTime);
+                    chartTemp.push(item.temperature);
+                    chartHumid.push(item.humidity);
+                });
+
+            } else if (currentViewMode === 'last7days') {
+                titleEl.innerText = "Environment Trend - Last 7 Days";
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(now.getDate() - 7);
+
+                const filtered = dataArray.filter(item => {
+                    if (!item.timestamp) return false;
+                    const itemDate = new Date(item.timestamp.replace(' ', 'T'));
+                    return itemDate >= sevenDaysAgo;
+                });
+
+                filtered.forEach(item => {
+                    // แสดงรูปแบบ "DD/MM HH:MM"
+                    let parts = item.timestamp.split(' ');
+                    let dateParts = parts[0].split('-');
+                    let shortLabel = `${dateParts[2]}/${dateParts[1]} ${parts[1].substring(0, 5)}`;
+                    chartLabels.push(shortLabel);
+                    chartTemp.push(item.temperature);
+                    chartHumid.push(item.humidity);
+                });
+
+            } else if (currentViewMode === 'dailyavg') {
+                titleEl.innerText = "Daily Average Trend (Last 7+ Days)";
+                
+                // จัดกลุ่มข้อมูลตามวัน (YYYY-MM-DD)
+                let groupedByDay = {};
+                dataArray.forEach(item => {
+                    if (!item.timestamp) return;
+                    let dayKey = item.timestamp.split(' ')[0];
+                    if (!groupedByDay[dayKey]) {
+                        groupedByDay[dayKey] = { sumTemp: 0, sumHumid: 0, count: 0 };
+                    }
+                    groupedByDay[dayKey].sumTemp += parseFloat(item.temperature);
+                    groupedByDay[dayKey].sumHumid += parseFloat(item.humidity);
+                    groupedByDay[dayKey].count += 1;
+                });
+
+                // คำนวณค่าเฉลี่ย
+                let sortedDays = Object.keys(groupedByDay).sort();
+                sortedDays.forEach(day => {
+                    let stats = groupedByDay[day];
+                    let avgTemp = (stats.sumTemp / stats.count).toFixed(1);
+                    let avgHumid = (stats.sumHumid / stats.count).toFixed(1);
+
+                    let dateParts = day.split('-');
+                    let displayDay = `${dateParts[2]}/${dateParts[1]}`;
+
+                    chartLabels.push(displayDay);
+                    chartTemp.push(avgTemp);
+                    chartHumid.push(avgHumid);
+                });
+            }
+
+            // อัปเดตข้อมูลลงกราฟ
+            envChart.data.labels = chartLabels;
+            envChart.data.datasets[0].data = chartTemp;
+            envChart.data.datasets[1].data = chartHumid;
             envChart.update();
         }
 
-        // เริ่มต้นการดึงข้อมูลแบบ Real-time (ทำงานทันทีและทำงานทุกครั้งที่มีข้อมูลใหม่เข้า DB)
+        // --- 5. Firebase Realtime Listener ---
+        const statusEl = document.getElementById('connection-status');
+        const metricsRef = db.ref('rack_metrics');
+
         metricsRef.on('value', (snapshot) => {
             statusEl.innerText = "Connected (Live)";
             statusEl.classList.replace('text-slate-300', 'text-success');
             
-            const data = snapshot.val();
-            updateDashboard(data);
+            globalRawData = snapshot.val();
+            processAndRenderChart(globalRawData);
         }, (error) => {
             console.error("Firebase read failed: " + error.code);
             statusEl.innerText = "Connection Failed";
