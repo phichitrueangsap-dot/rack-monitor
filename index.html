@@ -248,7 +248,15 @@
         function processAndRenderChart(dataObj) {
             if (!dataObj) return;
 
-            const dataArray = Object.keys(dataObj).map(key => dataObj[key]);
+            // แปลง Object และกรองข้อมูลที่อุณหภูมิหรือความชื้น < 2 ออก (ถือว่าเป็น Error)
+            const dataArray = Object.keys(dataObj)
+                .map(key => dataObj[key])
+                .filter(item => {
+                    const temp = parseFloat(item.temperature);
+                    const humid = parseFloat(item.humidity);
+                    return !isNaN(temp) && !isNaN(humid) && temp >= 2 && humid >= 2;
+                });
+
             if (dataArray.length === 0) return;
 
             // อัปเดตการ์ดสถานะด้านบนด้วยข้อมูลล่าสุดเสมอ
@@ -316,7 +324,6 @@
                 });
 
                 filtered.forEach(item => {
-                    // แสดงรูปแบบ "DD/MM HH:MM"
                     let parts = item.timestamp.split(' ');
                     let dateParts = parts[0].split('-');
                     let shortLabel = `${dateParts[2]}/${dateParts[1]} ${parts[1].substring(0, 5)}`;
@@ -328,7 +335,6 @@
             } else if (currentViewMode === 'dailyavg') {
                 titleEl.innerText = "Daily Average Trend (Last 7+ Days)";
                 
-                // จัดกลุ่มข้อมูลตามวัน (YYYY-MM-DD)
                 let groupedByDay = {};
                 dataArray.forEach(item => {
                     if (!item.timestamp) return;
@@ -341,7 +347,6 @@
                     groupedByDay[dayKey].count += 1;
                 });
 
-                // คำนวณค่าเฉลี่ย
                 let sortedDays = Object.keys(groupedByDay).sort();
                 sortedDays.forEach(day => {
                     let stats = groupedByDay[day];
